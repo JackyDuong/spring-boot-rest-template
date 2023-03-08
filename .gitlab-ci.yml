@@ -1,0 +1,76 @@
+############################################
+#######             BUILD            #######
+############################################
+
+variables:
+  MAVEN_CLI_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  MVN_IMAGE: $DOCKER_HUB_URL/library/maven:3.8.6-openjdk-11-slim
+  KANIKO_IMAGE: gcr.io/kaniko-project/executor:debug
+  
+# Cache downloaded dependencies and plugins between builds.
+cache:
+  key: #APP_ABBREVIATION-backend-cache
+  paths:
+    - .m2/repository
+        
+backend-prod-build:
+  stage: build
+  image: $MVN_IMAGE
+  script:
+    - mvn clean
+    - mvn -am install -P prod -DskipTests
+  artifacts:
+    paths:
+      - target/*.jar
+  only:
+    - develop
+    - main
+
+##########################################
+#######           DEPLOY           #######
+##########################################
+
+backend-prebuild-docker:
+  stage: deploy
+  dependencies:
+    - backend-prod-build
+  image: $MVN_IMAGE
+  script:
+    - echo "Packaging the code..."
+    - mvn $MAVEN_CLI_OPTS install -DskipTests
+    - echo "Package complete."
+  after_script:
+    - cd docker/spring-boot/
+    - sh prebuild-docker-image.sh
+  artifacts:
+    paths:
+      - docker/spring-boot/target/*
+    expire_in: 1 hour
+
+deploy-with-kaniko:
+  stage: deploy
+  needs: [backend-prebuild-docker]
+  image:
+    name: $KANIKO_IMAGE
+    entrypoint: [""]
+  variables:
+    IMAGE_TAG: $CI_COMMIT_TAG
+    IMAGE_TAG_LATEST: "latest"
+    CONTAINER_IMAGE: $REGISTRY_HARBOR/#APPLICATION_NAME/#APPLICATION_NAME-backend-spring
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$REGISTRY_HARBOR\":{\"auth\":\"$(printf "%s:%s" "$REGISTRY_HARBOR_USER" "$REGISTRY_HARBOR_PASSWORD" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - echo "$PKI_ROOT_CA" >> /kaniko/ssl/certs/ca-certificates.crt
+    - >
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        IMAGE_TAG=$CI_COMMIT_TAG
+      else
+        IMAGE_TAG=`date '+%y.%m.%d-%H%M'`
+      fi
+  script:
+    - >-
+      /kaniko/executor
+      --context "${CI_PROJECT_DIR}/docker/spring-boot/"
+      --dockerfile "Dockerfile"
+      --destination "$CONTAINER_IMAGE:$IMAGE_TAG"
+      --destination "$CONTAINER_IMAGE:$IMAGE_TAG_LATEST"

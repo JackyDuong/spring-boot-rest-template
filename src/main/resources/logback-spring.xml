@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <property resource="application.properties" />
+    <property name="log.path" value="${logging.file.path}"/>
+    <property name="log.name" value="${logging.file.name}"/>
+    <property name="log.archived" value="${log.path}/archived-app/%d{yyyy-MM-dd}.${log.name}.%i.zip"/>
+
+    <springProfile name="dev">
+        <include resource="org/springframework/boot/logging/logback/base.xml"/>
+        <property name="log.level" value="all"/>
+
+        <appender name="Console" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            </encoder>
+        </appender>
+
+        <appender name="RollingFile" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${log.path}/${log.name}</file>
+            <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+                <Pattern>${FILE_LOG_PATTERN}</Pattern>
+            </encoder>
+            <rollingPolicy
+                    class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${log.archived}</fileNamePattern>
+                <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                    <maxFileSize>1MB</maxFileSize>
+                </timeBasedFileNamingAndTriggeringPolicy>
+                <maxHistory>3</maxHistory>
+            </rollingPolicy>
+        </appender>
+
+        <!-- LOG everything at INFO level -->
+        <root level="info">
+            <appender-ref ref="RollingFile"/>
+        </root>
+
+        <logger name="ch.jmd" level="${log.level}" additivity="false">
+            <appender-ref ref="RollingFile"/>
+            <appender-ref ref="Console"/>
+        </logger>
+    </springProfile>
+
+    <springProfile name="qa,form,prod">
+        <include resource="org/springframework/boot/logging/logback/defaults.xml" />
+        <property name="log.level" value="info"/>
+
+        <appender name="RollingFile" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${log.path}/${log.name}</file>
+            <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+                <Pattern>${FILE_LOG_PATTERN}</Pattern>
+            </encoder>
+            <rollingPolicy
+                    class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${log.path}/archived/%d{yyyy-MM-dd}.%i.zip
+                </fileNamePattern>
+                <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                    <maxFileSize>25MB</maxFileSize>
+                </timeBasedFileNamingAndTriggeringPolicy>
+                <maxHistory>30</maxHistory>
+            </rollingPolicy>
+        </appender>
+
+        <root level="${log.level}">
+            <appender-ref ref="RollingFile"/>
+        </root>
+    </springProfile>
+
+</configuration>
